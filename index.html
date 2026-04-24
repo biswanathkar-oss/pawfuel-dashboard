@@ -314,7 +314,18 @@ const SEED = {
 // 3. UTILITIES
 // ══════════════════════════════════════════════════════════════════════
 const INR = v => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0}).format(+v||0);
-const PCT = v => ((+v||0)*100).toFixed(1)+'%';
+// Smart PCT: auto-detects if value is decimal (0.27) or already percent (27) and normalises to display
+const PCT = v => {
+  const num = parseFloat(cleanNum(v))||0;
+  // If value > 1, it's already in percentage form (e.g. 27 means 27%), display as-is
+  // If value <= 1, it's a decimal (e.g. 0.27 means 27%), multiply by 100
+  return (num > 1 ? num : num * 100).toFixed(1) + '%';
+};
+// Same logic for chart values — returns the numeric % for Chart.js axes
+const pctVal = v => {
+  const num = parseFloat(cleanNum(v))||0;
+  return num > 1 ? num : num * 100;
+};
 // Clean numeric strings: remove ₹ %, spaces, thousands commas (but not decimal points)
 const cleanNum = v => String(v||'').replace(/[₹%\s]/g,'').replace(/,(?=\d{3})/g,'');
 const n = v => parseFloat(cleanNum(v))||0;
@@ -625,8 +636,8 @@ function buildEbitda() {
   CHARTS.ebitda = new Chart(document.getElementById('ch-ebitda'),{
     type:'bar',
     data:{labels,datasets:[
-      {label:'EBITDA Margin',data:md.map(r=>+(gn(r,KEY_MAP.ebitda)*100).toFixed(1)),backgroundColor:C.amber+'CC',borderRadius:5,yAxisID:'y'},
-      {label:'Churn Rate',type:'line',data:md.map(r=>+(gn(r,KEY_MAP.churn)*100).toFixed(1)),borderColor:C.coral,backgroundColor:'transparent',tension:0.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:C.coral,yAxisID:'y2'},
+      {label:'EBITDA Margin',data:md.map(r=>+pctVal(gn(r,KEY_MAP.ebitda)).toFixed(1)),backgroundColor:C.amber+'CC',borderRadius:5,yAxisID:'y'},
+      {label:'Churn Rate',type:'line',data:md.map(r=>+pctVal(gn(r,KEY_MAP.churn)).toFixed(1)),borderColor:C.coral,backgroundColor:'transparent',tension:0.4,borderWidth:2.5,pointRadius:5,pointBackgroundColor:C.coral,yAxisID:'y2'},
     ]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+c.parsed.y.toFixed(1)+'%'}}},
@@ -850,12 +861,16 @@ async function boot(showLoader=true) {
 
   if(anyFailed) {
     setPill('seed','Built-in data');
-    document.getElementById('src-status').textContent='⚠️ Could not reach Google Sheets — showing built-in seed data. Open this file from a web server (Netlify/GitHub Pages) for live data.';
-    showNotice('warn',`
-      <strong>ℹ️ Showing built-in data</strong> — Live Google Sheets could not be reached from a local file.<br>
-      To get live data: <strong>host this file on Netlify or GitHub Pages</strong> (free, 2 min setup) and the dashboard will connect automatically.
-      <a href="https://app.netlify.com/drop" target="_blank" style="color:inherit;font-weight:600;text-decoration:underline;margin-left:6px">Open Netlify Drop →</a>
-    `);
+    document.getElementById('src-status').textContent='⚠️ Could not reach Google Sheets — showing built-in seed data.';
+    // Only show the banner if running from a local file (not a hosted server)
+    const isHosted = location.protocol === 'https:' || location.hostname === 'localhost';
+    if (!isHosted) {
+      showNotice('warn',`
+        <strong>ℹ️ Showing built-in data</strong> — Live Google Sheets could not be reached from a local file.<br>
+        To get live data: <strong>host this file on Netlify or GitHub Pages</strong> (free, 2 min setup) and the dashboard will connect automatically.
+        <a href="https://app.netlify.com/drop" target="_blank" style="color:inherit;font-weight:600;text-decoration:underline;margin-left:6px">Open Netlify Drop →</a>
+      `);
+    }
   } else {
     setPill('live','Live · Google Sheets');
     document.getElementById('src-status').textContent='✅ Connected to Google Sheets — data is live.';
